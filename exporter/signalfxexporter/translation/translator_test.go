@@ -15,6 +15,7 @@
 package translation
 
 import (
+	"encoding/json"
 	"sort"
 	"testing"
 	"time"
@@ -44,7 +45,9 @@ type byDimensions []*sfxpb.Dimension
 
 func (dims byDimensions) Len() int { return len(dims) }
 func (dims byDimensions) Less(i, j int) bool {
-	return dims[i].Key < dims[j].Key
+	ib, _ := json.Marshal(dims[i])
+	jb, _ := json.Marshal(dims[j])
+	return string(ib) < string(jb)
 }
 func (dims byDimensions) Swap(i, j int) { dims[i], dims[j] = dims[j], dims[i] }
 
@@ -1883,14 +1886,6 @@ func TestTranslateDataPoints(t *testing.T) {
 }
 
 func assertEqualPoints(t *testing.T, got []*sfxpb.DataPoint, want []*sfxpb.DataPoint, action Action) {
-	// Handle float values separately
-	for i, dp := range got {
-		if dp.GetValue().DoubleValue != nil {
-			assert.InDelta(t, *want[i].GetValue().DoubleValue, *dp.GetValue().DoubleValue, 0.00000001)
-			*dp.GetValue().DoubleValue = *want[i].GetValue().DoubleValue
-		}
-	}
-
 	// Sort metrics to handle not deterministic order from aggregation
 	if action == ActionAggregateMetric {
 		sort.Sort(byContent(want))
@@ -1904,6 +1899,14 @@ func assertEqualPoints(t *testing.T, got []*sfxpb.DataPoint, want []*sfxpb.DataP
 
 		for _, dp := range got {
 			sort.Sort(byDimensions(dp.Dimensions))
+		}
+	}
+
+	// Handle float values separately
+	for i, dp := range got {
+		if dp.GetValue().DoubleValue != nil {
+			assert.InDelta(t, *want[i].GetValue().DoubleValue, *dp.GetValue().DoubleValue, 0.00000001)
+			*dp.GetValue().DoubleValue = *want[i].GetValue().DoubleValue
 		}
 	}
 

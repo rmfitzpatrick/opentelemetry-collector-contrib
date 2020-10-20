@@ -27,17 +27,28 @@ var (
 		res := pdata.NewResource()
 		res.InitEmpty()
 		attr := res.Attributes()
-		attr.InsertString(conventions.AttributeCloudProvider, "aws")
+		attr.InsertString(conventions.AttributeCloudProvider, conventions.AttributeCloudProviderAWS)
 		attr.InsertString(conventions.AttributeCloudAccount, "1234")
 		attr.InsertString(conventions.AttributeCloudRegion, "us-west-2")
 		attr.InsertString(conventions.AttributeHostID, "i-abcd")
+		return res
+	}()
+	ec2WithHost = func() pdata.Resource {
+		res := pdata.NewResource()
+		res.InitEmpty()
+		attr := res.Attributes()
+		attr.InsertString(conventions.AttributeCloudProvider, conventions.AttributeCloudProviderAWS)
+		attr.InsertString(conventions.AttributeCloudAccount, "1234")
+		attr.InsertString(conventions.AttributeCloudRegion, "us-west-2")
+		attr.InsertString(conventions.AttributeHostID, "i-abcd")
+		attr.InsertString(conventions.AttributeHostName, "localhost")
 		return res
 	}()
 	ec2PartialResource = func() pdata.Resource {
 		res := pdata.NewResource()
 		res.InitEmpty()
 		attr := res.Attributes()
-		attr.InsertString(conventions.AttributeCloudProvider, "aws")
+		attr.InsertString(conventions.AttributeCloudProvider, conventions.AttributeCloudProviderAWS)
 		attr.InsertString(conventions.AttributeHostID, "i-abcd")
 		return res
 	}()
@@ -45,7 +56,7 @@ var (
 		res := pdata.NewResource()
 		res.InitEmpty()
 		attr := res.Attributes()
-		attr.InsertString(conventions.AttributeCloudProvider, "gcp")
+		attr.InsertString(conventions.AttributeCloudProvider, conventions.AttributeCloudProviderGCP)
 		attr.InsertString(conventions.AttributeCloudAccount, "1234")
 		attr.InsertString(conventions.AttributeHostID, "i-abcd")
 		return res
@@ -54,8 +65,15 @@ var (
 		res := pdata.NewResource()
 		res.InitEmpty()
 		attr := res.Attributes()
-		attr.InsertString(conventions.AttributeCloudProvider, "gcp")
+		attr.InsertString(conventions.AttributeCloudProvider, conventions.AttributeCloudProviderGCP)
 		attr.InsertString(conventions.AttributeCloudAccount, "1234")
+		return res
+	}()
+	hostResource = func() pdata.Resource {
+		res := pdata.NewResource()
+		res.InitEmpty()
+		attr := res.Attributes()
+		attr.InsertString(conventions.AttributeHostName, "localhost")
 		return res
 	}()
 	unknownResource = func() pdata.Resource {
@@ -80,8 +98,23 @@ func TestResourceToHostID(t *testing.T) {
 		ok   bool
 	}{
 		{
+			name: "nil resource",
+			args: args{pdata.NewResource()},
+			want: HostID{},
+			ok:   false,
+		},
+		{
 			name: "ec2",
 			args: args{ec2Resource},
+			want: HostID{
+				Key: "AWSUniqueId",
+				ID:  "i-abcd_us-west-2_1234",
+			},
+			ok: true,
+		},
+		{
+			name: "ec2 with hostname prefers ec2",
+			args: args{ec2WithHost},
 			want: HostID{
 				Key: "AWSUniqueId",
 				ID:  "i-abcd_us-west-2_1234",
@@ -114,6 +147,15 @@ func TestResourceToHostID(t *testing.T) {
 			args: args{unknownResource},
 			want: HostID{},
 			ok:   false,
+		},
+		{
+			name: "host provider",
+			args: args{hostResource},
+			want: HostID{
+				Key: "host.name",
+				ID:  "localhost",
+			},
+			ok: true,
 		},
 	}
 	for _, tt := range tests {

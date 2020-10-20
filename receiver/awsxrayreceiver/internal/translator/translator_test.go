@@ -88,7 +88,7 @@ func TestTranslation(t *testing.T) {
 			samplePath: path.Join("../../../../internal/awsxray", "testdata", "serverSample.txt"),
 			expectedResourceAttrs: func(seg *awsxray.Segment) map[string]pdata.AttributeValue {
 				attrs := make(map[string]pdata.AttributeValue)
-				attrs[conventions.AttributeCloudProvider] = pdata.NewAttributeValueString("aws")
+				attrs[conventions.AttributeCloudProvider] = pdata.NewAttributeValueString(conventions.AttributeCloudProviderAWS)
 				attrs[conventions.AttributeTelemetrySDKVersion] = pdata.NewAttributeValueString(
 					*seg.AWS.XRay.SDKVersion)
 				attrs[conventions.AttributeTelemetrySDKName] = pdata.NewAttributeValueString(
@@ -128,7 +128,7 @@ func TestTranslation(t *testing.T) {
 			samplePath: path.Join("../../../../internal/awsxray", "testdata", "ddbSample.txt"),
 			expectedResourceAttrs: func(seg *awsxray.Segment) map[string]pdata.AttributeValue {
 				attrs := make(map[string]pdata.AttributeValue)
-				attrs[conventions.AttributeCloudProvider] = pdata.NewAttributeValueString("aws")
+				attrs[conventions.AttributeCloudProvider] = pdata.NewAttributeValueString(conventions.AttributeCloudProviderAWS)
 				attrs[conventions.AttributeTelemetrySDKVersion] = pdata.NewAttributeValueString(
 					*seg.AWS.XRay.SDKVersion)
 				attrs[conventions.AttributeTelemetrySDKName] = pdata.NewAttributeValueString(
@@ -584,7 +584,7 @@ func TestTranslation(t *testing.T) {
 			samplePath: path.Join("../../../../internal/awsxray", "testdata", "awsValidAwsFields.txt"),
 			expectedResourceAttrs: func(seg *awsxray.Segment) map[string]pdata.AttributeValue {
 				attrs := make(map[string]pdata.AttributeValue)
-				attrs[conventions.AttributeCloudProvider] = pdata.NewAttributeValueString("aws")
+				attrs[conventions.AttributeCloudProvider] = pdata.NewAttributeValueString(conventions.AttributeCloudProviderAWS)
 				attrs[conventions.AttributeCloudAccount] = pdata.NewAttributeValueString(
 					*seg.AWS.AccountID)
 				attrs[conventions.AttributeCloudZone] = pdata.NewAttributeValueString(
@@ -953,9 +953,11 @@ func initResourceSpans(expectedSeg *awsxray.Segment,
 
 	for i, props := range propsPerSpan {
 		sp := ls.Spans().At(i)
-		sp.SetSpanID([]byte(props.spanID))
+		spanIDBytes, _ := decodeXRaySpanID(&props.spanID)
+		sp.SetSpanID(pdata.NewSpanID(spanIDBytes))
 		if props.parentSpanID != nil {
-			sp.SetParentSpanID([]byte(*props.parentSpanID))
+			parentIDBytes, _ := decodeXRaySpanID(props.parentSpanID)
+			sp.SetParentSpanID(pdata.NewSpanID(parentIDBytes))
 		}
 		sp.SetName(props.name)
 		sp.SetStartTime(pdata.TimestampUnixNano(props.startTimeSec * float64(time.Second)))
@@ -963,7 +965,8 @@ func initResourceSpans(expectedSeg *awsxray.Segment,
 			sp.SetEndTime(pdata.TimestampUnixNano(*props.endTimeSec * float64(time.Second)))
 		}
 		sp.SetKind(props.spanKind)
-		sp.SetTraceID(pdata.NewTraceID([]byte(props.traceID)))
+		traceIDBytes, _ := decodeXRayTraceID(&props.traceID)
+		sp.SetTraceID(pdata.NewTraceID(traceIDBytes))
 		sp.Status().InitEmpty()
 		sp.Status().SetMessage(props.spanStatus.message)
 		sp.Status().SetCode(props.spanStatus.code)
@@ -1028,7 +1031,7 @@ func compare2ResourceSpans(t *testing.T, testCase string, exp, act *pdata.Resour
 		assert.Equal(t,
 			expS.Attributes().Sort(),
 			actS.Attributes().Sort(),
-			fmt.Sprintf("%s: span[%s].Attributes() differ", testCase, string(expS.SpanID())),
+			fmt.Sprintf("%s: span[%s].Attributes() differ", testCase, expS.SpanID().HexString()),
 		)
 		expS.Attributes().InitEmptyWithCapacity(0)
 		actS.Attributes().InitEmptyWithCapacity(0)
@@ -1039,7 +1042,7 @@ func compare2ResourceSpans(t *testing.T, testCase string, exp, act *pdata.Resour
 			expEvts.Len(),
 			actEvts.Len(),
 			fmt.Sprintf("%s: span[%s].Events().Len() differ",
-				testCase, string(expS.SpanID())),
+				testCase, expS.SpanID().HexString()),
 		)
 
 		for j := 0; j < expEvts.Len(); j++ {
@@ -1050,7 +1053,7 @@ func compare2ResourceSpans(t *testing.T, testCase string, exp, act *pdata.Resour
 				expEvt.Attributes().Sort(),
 				actEvt.Attributes().Sort(),
 				fmt.Sprintf("%s: span[%s], event[%d].Attributes() differ",
-					testCase, string(expS.SpanID()), j),
+					testCase, expS.SpanID().HexString(), j),
 			)
 			expEvt.Attributes().InitEmptyWithCapacity(0)
 			actEvt.Attributes().InitEmptyWithCapacity(0)
@@ -1059,4 +1062,43 @@ func compare2ResourceSpans(t *testing.T, testCase string, exp, act *pdata.Resour
 
 	assert.Equal(t, exp, act,
 		testCase+": actual ResourceSpans differ from the expected")
+}
+
+func TestDecodeXRayTraceID(t *testing.T) {
+	// normal
+	traceID := "1-5f84c7a1-e7d1852db8c4fd35d88bf49a"
+	traceIDBytes, err := decodeXRayTraceID(&traceID)
+	expectedTraceIDBytes := []byte("\x5f\x84\xc7\xa1\xe7\xd1\x85\x2d\xb8\xc4\xfd\x35\xd8\x8b\xf4\x9a")
+	if assert.NoError(t, err) {
+		assert.Equal(t, traceIDBytes, expectedTraceIDBytes)
+	}
+
+	// invalid format
+	traceID = "1-5f84c7a1-e7d1852db"
+	_, err = decodeXRayTraceID(&traceID)
+	assert.Error(t, err)
+
+	// null point
+	_, err = decodeXRayTraceID(nil)
+	assert.Error(t, err)
+}
+
+func TestDecodeXRaySpanID(t *testing.T) {
+	// normal
+	spanID := "defdfd9912dc5a56"
+	spanIDBytes, err := decodeXRaySpanID(&spanID)
+	expectedSpanIDBytes := []byte("\xde\xfd\xfd\x99\x12\xdc\x5a\x56")
+	if assert.NoError(t, err) {
+		assert.Equal(t, spanIDBytes, expectedSpanIDBytes)
+	}
+
+	// invalid format
+	spanID = "12345566"
+	_, err = decodeXRaySpanID(&spanID)
+	assert.Error(t, err)
+
+	// null point
+	_, err = decodeXRaySpanID(nil)
+	assert.Error(t, err)
+
 }

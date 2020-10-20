@@ -26,9 +26,10 @@ import (
 
 const (
 	typeStr = "stanza"
+	verStr  = "0.12.0"
 )
 
-// NewFactory creates a factory for Stanza receiver.
+// NewFactory creates a factory for Stanza receiver
 func NewFactory() component.ReceiverFactory {
 	return receiverhelper.NewFactory(
 		typeStr,
@@ -55,9 +56,12 @@ func createLogsReceiver(
 
 	obsConfig := cfg.(*Config)
 
+	emitter := NewLogEmitter(params.Logger.Sugar())
+
 	logAgent, err := stanza.NewBuilder(&stanza.Config{Pipeline: obsConfig.Pipeline}, params.Logger.Sugar()).
 		WithPluginDir(obsConfig.PluginDir).
 		WithDatabaseFile(obsConfig.OffsetsFile).
+		WithDefaultOutput(emitter).
 		Build()
 	if err != nil {
 		return nil, err
@@ -65,6 +69,7 @@ func createLogsReceiver(
 
 	return &stanzareceiver{
 		agent:    logAgent,
+		emitter:  emitter,
 		consumer: nextConsumer,
 		logger:   params.Logger,
 	}, nil

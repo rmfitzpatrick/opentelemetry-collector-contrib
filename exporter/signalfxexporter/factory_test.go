@@ -30,6 +30,7 @@ import (
 	"go.opentelemetry.io/collector/config/configcheck"
 	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/consumer/consumerdata"
+	"go.opentelemetry.io/collector/exporter/exporterhelper"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -100,7 +101,7 @@ func TestCreateMetricsExporter_CustomConfig(t *testing.T) {
 			"added-entry": "added value",
 			"dot.test":    "test",
 		},
-		Timeout: 2 * time.Second,
+		TimeoutSettings: exporterhelper.TimeoutSettings{Timeout: 2 * time.Second},
 	}
 
 	te, err := createMetricsExporter(context.Background(), component.ExporterCreateParams{Logger: zap.NewNop()}, config)
@@ -121,9 +122,9 @@ func TestFactory_CreateMetricsExporterFails(t *testing.T) {
 					TypeVal: configmodels.Type(typeStr),
 					NameVal: typeStr,
 				},
-				AccessToken: "testToken",
-				Realm:       "lab",
-				Timeout:     -2 * time.Second,
+				AccessToken:     "testToken",
+				Realm:           "lab",
+				TimeoutSettings: exporterhelper.TimeoutSettings{Timeout: -2 * time.Second},
 			},
 			errorMessage: "failed to process \"signalfx\" config: cannot have a negative \"timeout\"",
 		},
@@ -179,7 +180,7 @@ func TestCreateMetricsExporterWithDefaultTranslaitonRules(t *testing.T) {
 
 	// Validate that default translation rules are loaded
 	// Expected values has to be updated once default config changed
-	assert.Equal(t, 48, len(config.TranslationRules))
+	assert.Equal(t, 51, len(config.TranslationRules))
 	assert.Equal(t, translation.ActionRenameDimensionKeys, config.TranslationRules[0].Action)
 	assert.Equal(t, 33, len(config.TranslationRules[0].Mapping))
 }
